@@ -17,6 +17,7 @@ import (
 	"net/http"
 	"os"
 	"strings"
+	"sync"
 
 	"cloud.google.com/go/functions/metadata"
 	"cloud.google.com/go/logging"
@@ -24,39 +25,44 @@ import (
 	"google.golang.org/genproto/googleapis/api/monitoredres"
 )
 
-var logger *logging.Logger
+var (
+	once   sync.Once
+	logger *logging.Logger
+)
 
-func init() {
-	project := os.Getenv("GCP_PROJECT")
-	function := os.Getenv("FUNCTION_NAME")
-	region := os.Getenv("FUNCTION_REGION")
+func setup() {
+	once.Do(func() {
+		project := os.Getenv("GCP_PROJECT")
+		function := os.Getenv("FUNCTION_NAME")
+		region := os.Getenv("FUNCTION_REGION")
 
-	if project == "" {
-		fmt.Fprintln(os.Stderr, "Failed to create logging client:", "GCP_PROJECT environment variable unset or missing")
-		return
-	}
-	if function == "" {
-		fmt.Fprintln(os.Stderr, "Failed to create logging client:", "FUNCTION_NAME environment variable unset or missing")
-		return
-	}
-	if region == "" {
-		fmt.Fprintln(os.Stderr, "Failed to create logging client:", "FUNCTION_REGION environment variable unset or missing")
-		return
-	}
+		if project == "" {
+			fmt.Fprintln(os.Stderr, "Failed to create logging client:", "GCP_PROJECT environment variable unset or missing")
+			return
+		}
+		if function == "" {
+			fmt.Fprintln(os.Stderr, "Failed to create logging client:", "FUNCTION_NAME environment variable unset or missing")
+			return
+		}
+		if region == "" {
+			fmt.Fprintln(os.Stderr, "Failed to create logging client:", "FUNCTION_REGION environment variable unset or missing")
+			return
+		}
 
-	ctx := context.Background()
-	client, err := logging.NewClient(ctx, project)
-	if err != nil {
-		fmt.Fprintln(os.Stderr, "Failed to create logging client:", err)
-		return
-	}
+		ctx := context.Background()
+		client, err := logging.NewClient(ctx, project)
+		if err != nil {
+			fmt.Fprintln(os.Stderr, "Failed to create logging client:", err)
+			return
+		}
 
-	res := monitoredres.MonitoredResource{
-		Type:   "cloud_function",
-		Labels: map[string]string{"region": region, "function_name": function},
-	}
+		res := monitoredres.MonitoredResource{
+			Type:   "cloud_function",
+			Labels: map[string]string{"region": region, "function_name": function},
+		}
 
-	logger = client.Logger("cloudfunctions.googleapis.com/cloud-functions", logging.CommonResource(&res))
+		logger = client.Logger("cloudfunctions.googleapis.com/cloud-functions", logging.CommonResource(&res))
+	})
 }
 
 type contextKey struct{}
@@ -73,7 +79,7 @@ func ForRequest(r *http.Request) context.Context {
 
 // Flush all loggers. Blocking.
 func Flush() error {
-	if logger != nil {
+	if setup(); logger != nil {
 		return logger.Flush()
 	}
 	return nil
@@ -88,7 +94,7 @@ type Logger struct {
 func (l Logger) log(s string) {
 	s = strings.TrimRight(s, "\n")
 
-	if logger != nil {
+	if setup(); logger != nil {
 		entry := logging.Entry{
 			Severity: l.s,
 			Payload:  s,

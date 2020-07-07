@@ -9,6 +9,12 @@
 //        logging.Info(ctx).Println("Hello logs")
 //        logging.Error(ctx).Println("Hello logs")
 //    }
+//
+// When deploying your function, you need to set the following environment
+// variables:
+//    GOOGLE_CLOUD_PROJECT:  The current GCP project ID.
+//    FUNCTION_NAME:         The name of the function resource.
+//    FUNCTION_REGION:       The function region (example: us-central1).
 package logging
 
 import (
@@ -32,18 +38,29 @@ var (
 
 func setup() {
 	once.Do(func() {
-		project := os.Getenv("GCP_PROJECT")
+		project := os.Getenv("GOOGLE_CLOUD_PROJECT")
 		function := os.Getenv("FUNCTION_NAME")
 		region := os.Getenv("FUNCTION_REGION")
 
 		if project == "" {
-			fmt.Fprintln(os.Stderr, "Failed to create logging client:", "GCP_PROJECT environment variable unset or missing")
+			project = os.Getenv("GCP_PROJECT")
+		}
+		if project == "" {
+			project = os.Getenv("GCLOUD_PROJECT")
+		}
+		if project == "" {
+			fmt.Fprintln(os.Stderr, "Failed to create logging client:", "GOOGLE_CLOUD_PROJECT environment variable unset or missing")
 			return
+		}
+
+		if function == "" {
+			project = os.Getenv("K_SERVICE")
 		}
 		if function == "" {
 			fmt.Fprintln(os.Stderr, "Failed to create logging client:", "FUNCTION_NAME environment variable unset or missing")
 			return
 		}
+
 		if region == "" {
 			fmt.Fprintln(os.Stderr, "Failed to create logging client:", "FUNCTION_REGION environment variable unset or missing")
 			return
